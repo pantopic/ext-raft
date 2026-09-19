@@ -1,4 +1,4 @@
-package wazero_state_machine
+package wazero_raft
 
 type Option func(*hostModule)
 

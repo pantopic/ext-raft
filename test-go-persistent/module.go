@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"strconv"
 
-	"github.com/pantopic/wazero-state-machine/sdk-go"
+	"github.com/pantopic/ext-raft/sdk-go"
 )
 
 var (
@@ -14,9 +14,9 @@ var (
 )
 
 func main() {
-	statemachine.Persistent(open, update, finish, read)
-	statemachine.Streaming(streamOpen, streamRecv, streamClosed)
-	statemachine.Watchable(watchOpen, watchClosed)
+	raft.Persistent(open, update, finish, read)
+	raft.Streaming(streamOpen, streamRecv, streamClosed)
+	raft.Watchable(watchOpen, watchClosed)
 }
 
 func open() uint64 {
@@ -62,11 +62,11 @@ func streamRecv(data []byte) {
 	println(`wasm stream recv ` + string(data))
 	if bytes.Equal(data, []byte(`close`)) {
 		println(`wasm stream close start`)
-		statemachine.StreamClose()
+		raft.StreamClose()
 		println(`wasm stream close complete`)
 	} else {
 		println(`wasm stream send start`)
-		statemachine.StreamSend(1, data)
+		raft.StreamSend(1, data)
 		println(`wasm stream send complete`)
 	}
 }
@@ -83,9 +83,9 @@ func watchOpen(data []byte) {
 	}
 	for i := range n {
 		println(`wasm watch send ` + strconv.Itoa(i+1))
-		statemachine.WatchSend(1, []byte(strconv.Itoa(i+1)))
+		raft.WatchSend(1, []byte(strconv.Itoa(i+1)))
 	}
-	statemachine.WatchClose()
+	raft.WatchClose()
 }
 
 func watchClosed() {

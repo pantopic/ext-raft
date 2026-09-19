@@ -1,8 +1,8 @@
 const std = @import("std");
-const statemachine = @import("statemachine");
+const raft = @import("raft");
 
 comptime {
-    _ = statemachine;
+    _ = raft;
 }
 
 var idx: u64 = 0;
@@ -10,12 +10,16 @@ var items: u64 = 0;
 var sets: u64 = 0;
 
 export fn _start() void {
-    statemachine.concurrent(update, finish, read);
-    statemachine.streaming(streamOpen, streamRecv, streamClosed);
-    statemachine.watchable(watchOpen, watchClosed);
+    raft.persistent(open, update, finish, read);
+    raft.streaming(streamOpen, streamRecv, streamClosed);
+    raft.watchable(watchOpen, watchClosed);
 }
 
-fn update(index: u64, cmd: []u8) statemachine.Result {
+fn open() u64 {
+    return 0;
+}
+
+fn update(index: u64, cmd: []u8) raft.Result {
     items += 1;
     const value = idx;
     idx = index;
@@ -31,7 +35,7 @@ fn finish() void {
     sets += 1;
 }
 
-fn read(query: []u8) statemachine.Result {
+fn read(query: []u8) raft.Result {
     if (std.mem.eql(u8, query, "index")) {
         return .{ .value = idx };
     } else if (std.mem.eql(u8, query, "items")) {
@@ -43,24 +47,24 @@ fn read(query: []u8) statemachine.Result {
 }
 
 fn streamOpen() void {
-    std.debug.print("wasm open\n", .{});
+    std.debug.print("wasm stream open\n", .{});
 }
 
 fn streamRecv(data: []u8) void {
-    std.debug.print("wasm recv {s}\n", .{data});
+    std.debug.print("wasm stream recv {s}\n", .{data});
     if (std.mem.eql(u8, data, "close")) {
-        std.debug.print("wasm close start\n", .{});
-        statemachine.streamClose();
-        std.debug.print("wasm close complete\n", .{});
+        std.debug.print("wasm stream close start\n", .{});
+        raft.streamClose();
+        std.debug.print("wasm stream close complete\n", .{});
     } else {
-        std.debug.print("wasm send start\n", .{});
-        statemachine.streamSend(1, data);
-        std.debug.print("wasm send complete\n", .{});
+        std.debug.print("wasm stream send start\n", .{});
+        raft.streamSend(1, data);
+        std.debug.print("wasm stream send complete\n", .{});
     }
 }
 
 fn streamClosed() void {
-    std.debug.print("wasm closed\n", .{});
+    std.debug.print("wasm stream closed\n", .{});
 }
 
 fn watchOpen(data: []u8) void {
@@ -71,9 +75,9 @@ fn watchOpen(data: []u8) void {
     while (i <= n) : (i += 1) {
         const s = std.fmt.bufPrint(&tmp, "{d}", .{i}) catch unreachable;
         std.debug.print("wasm watch send {s}\n", .{s});
-        statemachine.watchSend(1, s);
+        raft.watchSend(1, s);
     }
-    statemachine.watchClose();
+    raft.watchClose();
 }
 
 fn watchClosed() void {

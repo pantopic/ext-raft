@@ -1,4 +1,4 @@
-module github.com/pantopic/wazero-state-machine/host
+module github.com/pantopic/ext-raft/host-wazero
 
 go 1.25.7
 

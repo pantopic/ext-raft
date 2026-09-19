@@ -1,4 +1,4 @@
-package statemachine
+package raft
 
 const (
 	flagPersistent = 1 << iota

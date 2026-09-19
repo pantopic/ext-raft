@@ -1,4 +1,4 @@
-package wazero_state_machine
+package wazero_raft
 
 import (
 	"context"
@@ -11,17 +11,18 @@ import (
 	"github.com/pantopic/wazero-pool"
 )
 
-const Uri = "pantopic/wazero-state-machine"
+const UriPersistent = "pantopic/wazero-state-machine/persistent"
 
-func Factory(
+func FactoryPersistent(
 	ctx context.Context,
+	ctxInit ContextInit,
+	ctxCopiers []ContextCopy,
 	logger Logger,
 	poolProvider PoolProvider,
-	ctxInit ContextInit,
-	ctxCopiers ...ContextCopy,
-) func(shardID, replicaID uint64) zongzi.StateMachine {
+	extStorage ...StorageExtensionPersistent,
+) func(shardID, replicaID uint64) zongzi.StateMachinePersistent {
 	ctxCopiers = append(ctxCopiers, wazeropool.ContextCopy)
-	return func(shardID, replicaID uint64) zongzi.StateMachine {
+	return func(shardID, replicaID uint64) zongzi.StateMachinePersistent {
 		if ctxInit != nil {
 			ctx = ctxInit(ctx, shardID, replicaID)
 		}
@@ -30,38 +31,53 @@ func Factory(
 		for _, cc := range ctxCopiers {
 			ctx = cc(ctx, ctx)
 		}
-		return &StateMachine{
-			ctx:       ctx,
-			ctxCopy:   ctxCopiers,
-			log:       logger,
-			pool:      pool,
-			replicaID: replicaID,
-			shardID:   shardID,
+		return &StateMachinePersistent{
+			ctx:        ctx,
+			ctxCopy:    ctxCopiers,
+			extStorage: extStorage,
+			log:        logger,
+			pool:       pool,
+			replicaID:  replicaID,
+			shardID:    shardID,
 		}
 	}
 }
 
-var _ zongzi.StateMachine = (*StateMachine)(nil)
+var _ zongzi.StateMachinePersistent = (*StateMachinePersistent)(nil)
 
-type StateMachine struct {
-	zongzi.StateMachine
+type StateMachinePersistent struct {
+	zongzi.StateMachinePersistent
 
-	ctx       context.Context
-	ctxCopy   []ContextCopy
-	log       Logger
-	pool      wazeropool.Instance
-	replicaID uint64
-	shardID   uint64
+	ctx        context.Context
+	ctxCopy    []ContextCopy
+	extStorage []StorageExtensionPersistent
+	log        Logger
+	pool       wazeropool.Instance
+	replicaID  uint64
+	shardID    uint64
 }
 
-func (fsm *StateMachine) contextCopy(ctx context.Context) context.Context {
+func (fsm *StateMachinePersistent) Open(stopc <-chan struct{}) (index uint64, err error) {
+	var stack []uint64
+	fsm.pool.Run(func(mod api.Module) {
+		if stack, err = mod.ExportedFunction("__state_machine_open").Call(fsm.ctx); err != nil {
+			return
+		}
+		if len(stack) > 0 {
+			index = stack[0]
+		}
+	})
+	return
+}
+
+func (fsm *StateMachinePersistent) contextCopy(ctx context.Context) context.Context {
 	for _, cc := range fsm.ctxCopy {
 		ctx = cc(ctx, fsm.ctx)
 	}
 	return ctx
 }
 
-func (fsm *StateMachine) Update(entries []Entry) []Entry {
+func (fsm *StateMachinePersistent) Update(entries []Entry) []Entry {
 	ctx := fsm.contextCopy(context.Background())
 	fsm.pool.Run(func(mod api.Module) {
 		meta := get[*meta](fsm.ctx, ctxKeyMeta)
@@ -77,21 +93,19 @@ func (fsm *StateMachine) Update(entries []Entry) []Entry {
 			entries[i].Result.Value = readUint64(mod, meta.ptrValue)
 			entries[i].Result.Data = append(entries[i].Result.Data[:0], getData(mod, meta)...)
 		}
-		if _, err := mod.ExportedFunction("__state_machine_finish").Call(ctx); err != nil {
-			panic(err)
-		}
+		mod.ExportedFunction("__state_machine_finish").Call(ctx)
 	}, true)
 	return entries
 }
 
-func (fsm *StateMachine) Query(ctx context.Context, data []byte) (res *Result) {
-	res = zongzi.GetResult()
+func (fsm *StateMachinePersistent) Query(ctx context.Context, data []byte) (res *Result) {
 	ctx = fsm.contextCopy(ctx)
 	fsm.pool.Run(func(mod api.Module) {
 		meta := get[*meta](fsm.ctx, ctxKeyMeta)
 		setShardID(mod, meta, fsm.shardID)
 		setReplicaID(mod, meta, fsm.replicaID)
 		read := mod.ExportedFunction("__state_machine_read")
+		setData(mod, meta, data)
 		stack, err := read.Call(ctx)
 		if err != nil {
 			slog.Error(`StateMachinePersistent.Query error`, "err", err.Error(), `len`, len(data))
@@ -107,13 +121,17 @@ func (fsm *StateMachine) Query(ctx context.Context, data []byte) (res *Result) {
 	return
 }
 
-func (fsm *StateMachine) Watch(ctx context.Context, data []byte, out chan<- *Result) {
+func (fsm *StateMachinePersistent) Watch(ctx context.Context, data []byte, out chan<- *Result) {
+	ctx = fsm.contextCopy(ctx)
 	var closed bool
 	stop := make(chan bool)
 	meta := get[*meta](fsm.ctx, ctxKeyMeta)
-	ctx = fsm.contextCopy(ctx)
 	ctx = context.WithValue(ctx, ctxKeySend, func(res *Result) {
-		out <- res
+		select {
+		case out <- res:
+		case <-ctx.Done():
+			return
+		}
 	})
 	ctx = context.WithValue(ctx, ctxKeyClose, func() {
 		closed = true
@@ -123,7 +141,7 @@ func (fsm *StateMachine) Watch(ctx context.Context, data []byte, out chan<- *Res
 		setShardID(mod, meta, fsm.shardID)
 		setReplicaID(mod, meta, fsm.replicaID)
 		setData(mod, meta, data)
-		if _, err := mod.ExportedFunction("__state_machine_stream_open").Call(ctx); err != nil {
+		if _, err := mod.ExportedFunction("__state_machine_watch_open").Call(ctx); err != nil {
 			panic(err)
 		}
 	})
@@ -146,7 +164,7 @@ func (fsm *StateMachine) Watch(ctx context.Context, data []byte, out chan<- *Res
 	})
 }
 
-func (fsm *StateMachine) Stream(ctx context.Context, in <-chan []byte, out chan<- *Result) {
+func (fsm *StateMachinePersistent) Stream(ctx context.Context, in <-chan []byte, out chan<- *Result) {
 	var closed bool
 	stop := make(chan bool)
 	meta := get[*meta](fsm.ctx, ctxKeyMeta)
@@ -199,18 +217,52 @@ loop:
 	})
 }
 
-func (fsm *StateMachine) PrepareSnapshot() (cursor any, err error) {
+func (fsm *StateMachinePersistent) PrepareSnapshot() (cursor any, err error) {
+	var cursors []any
+	for _, ext := range fsm.extStorage {
+		c, err := ext.PrepareSnapshot(fsm.ctx)
+		if err != nil {
+			return nil, err
+		}
+		cursors = append(cursors, c)
+	}
 	return
 }
 
-func (fsm *StateMachine) SaveSnapshot(cursor any, w io.Writer, _ SnapshotFileCollection, close <-chan struct{}) (err error) {
+func (fsm *StateMachinePersistent) SaveSnapshot(cursor any, w io.Writer, close <-chan struct{}) (err error) {
+	// TODO: add buffered writer for streaming headers
+	for i, c := range cursor.([]any) {
+		if err = fsm.extStorage[i].SaveSnapshot(fsm.ctx, c, w, close); err != nil {
+			break
+		}
+	}
 	return
 }
 
-func (fsm *StateMachine) RecoverFromSnapshot(r io.Reader, _ []SnapshotFile, _ <-chan struct{}) (err error) {
+func (fsm *StateMachinePersistent) RecoverFromSnapshot(r io.Reader, close <-chan struct{}) (err error) {
+	// TODO: read streaming headers
+	for _, ext := range fsm.extStorage {
+		if err = ext.RecoverFromSnapshot(fsm.ctx, r, close); err != nil {
+			break
+		}
+	}
 	return
 }
 
-func (fsm *StateMachine) Close() (err error) {
+func (fsm *StateMachinePersistent) Sync() (err error) {
+	for _, ext := range fsm.extStorage {
+		if err = ext.Sync(fsm.ctx); err != nil {
+			break
+		}
+	}
+	return
+}
+
+func (fsm *StateMachinePersistent) Close() (err error) {
+	for _, ext := range fsm.extStorage {
+		if err = ext.Close(fsm.ctx); err != nil {
+			break
+		}
+	}
 	return
 }
