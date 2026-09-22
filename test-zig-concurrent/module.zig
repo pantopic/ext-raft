@@ -1,6 +1,8 @@
 const std = @import("std");
 const raft = @import("raft");
 
+pub const std_options_debug_io: std.Io = undefined;
+
 comptime {
     _ = raft;
 }
@@ -42,40 +44,27 @@ fn read(query: []u8) raft.Result {
     @panic("Unrecognized query");
 }
 
-fn streamOpen() void {
-    std.debug.print("wasm open\n", .{});
-}
+fn streamOpen() void {}
 
 fn streamRecv(data: []u8) void {
-    std.debug.print("wasm recv {s}\n", .{data});
     if (std.mem.eql(u8, data, "close")) {
-        std.debug.print("wasm close start\n", .{});
         raft.streamClose();
-        std.debug.print("wasm close complete\n", .{});
     } else {
-        std.debug.print("wasm send start\n", .{});
         raft.streamSend(1, data);
-        std.debug.print("wasm send complete\n", .{});
     }
 }
 
-fn streamClosed() void {
-    std.debug.print("wasm closed\n", .{});
-}
+fn streamClosed() void {}
 
 fn watchOpen(data: []u8) void {
-    std.debug.print("wasm watch open\n", .{});
     const n = std.fmt.parseInt(u64, data, 10) catch @panic("Invalid watch count");
     var i: u64 = 1;
     var tmp: [20]u8 = undefined;
     while (i <= n) : (i += 1) {
         const s = std.fmt.bufPrint(&tmp, "{d}", .{i}) catch unreachable;
-        std.debug.print("wasm watch send {s}\n", .{s});
         raft.watchSend(1, s);
     }
     raft.watchClose();
 }
 
-fn watchClosed() void {
-    std.debug.print("wasm watch closed\n", .{});
-}
+fn watchClosed() void {}

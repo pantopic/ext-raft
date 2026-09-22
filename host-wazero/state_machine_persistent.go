@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"sync"
 
 	"github.com/logbn/zongzi"
 	"github.com/tetratelabs/wazero/api"
@@ -60,7 +61,7 @@ type StateMachinePersistent struct {
 func (fsm *StateMachinePersistent) Open(stopc <-chan struct{}) (index uint64, err error) {
 	var stack []uint64
 	fsm.pool.Run(func(mod api.Module) {
-		if stack, err = mod.ExportedFunction("__state_machine_open").Call(fsm.ctx); err != nil {
+		if stack, err = mod.ExportedFunction("__raft_open").Call(fsm.ctx); err != nil {
 			return
 		}
 		if len(stack) > 0 {
@@ -83,7 +84,7 @@ func (fsm *StateMachinePersistent) Update(entries []Entry) []Entry {
 		meta := get[*meta](fsm.ctx, ctxKeyMeta)
 		setShardID(mod, meta, fsm.shardID)
 		setReplicaID(mod, meta, fsm.replicaID)
-		update := mod.ExportedFunction("__state_machine_update")
+		update := mod.ExportedFunction("__raft_update")
 		for i, e := range entries {
 			setIndex(mod, meta, e.Index)
 			setData(mod, meta, e.Cmd)
@@ -93,7 +94,7 @@ func (fsm *StateMachinePersistent) Update(entries []Entry) []Entry {
 			entries[i].Result.Value = readUint64(mod, meta.ptrValue)
 			entries[i].Result.Data = append(entries[i].Result.Data[:0], getData(mod, meta)...)
 		}
-		mod.ExportedFunction("__state_machine_finish").Call(ctx)
+		mod.ExportedFunction("__raft_finish").Call(ctx)
 	}, true)
 	return entries
 }
@@ -104,8 +105,8 @@ func (fsm *StateMachinePersistent) Query(ctx context.Context, data []byte) (res 
 		meta := get[*meta](fsm.ctx, ctxKeyMeta)
 		setShardID(mod, meta, fsm.shardID)
 		setReplicaID(mod, meta, fsm.replicaID)
-		read := mod.ExportedFunction("__state_machine_read")
 		setData(mod, meta, data)
+		read := mod.ExportedFunction("__raft_read")
 		stack, err := read.Call(ctx)
 		if err != nil {
 			slog.Error(`StateMachinePersistent.Query error`, "err", err.Error(), `len`, len(data))
@@ -122,11 +123,16 @@ func (fsm *StateMachinePersistent) Query(ctx context.Context, data []byte) (res 
 }
 
 func (fsm *StateMachinePersistent) Watch(ctx context.Context, data []byte, out chan<- *Result) {
-	ctx = fsm.contextCopy(ctx)
 	var closed bool
-	stop := make(chan bool)
+	var mu sync.Mutex
 	meta := get[*meta](fsm.ctx, ctxKeyMeta)
+	ctx, cancel := context.WithCancel(fsm.contextCopy(ctx))
 	ctx = context.WithValue(ctx, ctxKeySend, func(res *Result) {
+		mu.Lock()
+		defer mu.Unlock()
+		if closed {
+			return
+		}
 		select {
 		case out <- res:
 		case <-ctx.Done():
@@ -134,31 +140,27 @@ func (fsm *StateMachinePersistent) Watch(ctx context.Context, data []byte, out c
 		}
 	})
 	ctx = context.WithValue(ctx, ctxKeyClose, func() {
-		closed = true
-		close(stop)
+		mu.Lock()
+		defer mu.Unlock()
+		cancel()
 	})
 	fsm.pool.Run(func(mod api.Module) {
 		setShardID(mod, meta, fsm.shardID)
 		setReplicaID(mod, meta, fsm.replicaID)
 		setData(mod, meta, data)
-		if _, err := mod.ExportedFunction("__state_machine_watch_open").Call(ctx); err != nil {
+		if _, err := mod.ExportedFunction("__raft_watch_open").Call(ctx); err != nil {
 			panic(err)
 		}
 	})
-	select {
-	case <-ctx.Done():
-		if !closed {
-			close(stop)
-		}
-		break
-	case <-stop:
-		break
-	}
+	<-ctx.Done()
+	mu.Lock()
+	defer mu.Unlock()
+	closed = true
 	fsm.pool.Run(func(mod api.Module) {
 		setShardID(mod, meta, fsm.shardID)
 		setReplicaID(mod, meta, fsm.replicaID)
 		setData(mod, meta, data)
-		if _, err := mod.ExportedFunction("__state_machine_watch_closed").Call(ctx); err != nil {
+		if _, err := mod.ExportedFunction("__raft_watch_closed").Call(ctx); err != nil {
 			panic(err)
 		}
 	})
@@ -183,7 +185,7 @@ func (fsm *StateMachinePersistent) Stream(ctx context.Context, in <-chan []byte,
 	fsm.pool.Run(func(mod api.Module) {
 		setShardID(mod, meta, fsm.shardID)
 		setReplicaID(mod, meta, fsm.replicaID)
-		if _, err := mod.ExportedFunction("__state_machine_stream_open").Call(ctx); err != nil {
+		if _, err := mod.ExportedFunction("__raft_stream_open").Call(ctx); err != nil {
 			panic(err)
 		}
 	})
@@ -202,7 +204,7 @@ loop:
 				setShardID(mod, meta, fsm.shardID)
 				setReplicaID(mod, meta, fsm.replicaID)
 				setData(mod, meta, data)
-				if _, err := mod.ExportedFunction("__state_machine_stream_recv").Call(ctx); err != nil {
+				if _, err := mod.ExportedFunction("__raft_stream_recv").Call(ctx); err != nil {
 					panic(err)
 				}
 			})
@@ -211,7 +213,7 @@ loop:
 	fsm.pool.Run(func(mod api.Module) {
 		setShardID(mod, meta, fsm.shardID)
 		setReplicaID(mod, meta, fsm.replicaID)
-		if _, err := mod.ExportedFunction("__state_machine_stream_closed").Call(ctx); err != nil {
+		if _, err := mod.ExportedFunction("__raft_stream_closed").Call(ctx); err != nil {
 			panic(err)
 		}
 	})

@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"sync"
 
 	"github.com/logbn/zongzi"
 	"github.com/tetratelabs/wazero/api"
@@ -67,7 +68,7 @@ func (fsm *StateMachine) Update(entries []Entry) []Entry {
 		meta := get[*meta](fsm.ctx, ctxKeyMeta)
 		setShardID(mod, meta, fsm.shardID)
 		setReplicaID(mod, meta, fsm.replicaID)
-		update := mod.ExportedFunction("__state_machine_update")
+		update := mod.ExportedFunction("__raft_update")
 		for i, e := range entries {
 			setIndex(mod, meta, e.Index)
 			setData(mod, meta, e.Cmd)
@@ -77,7 +78,7 @@ func (fsm *StateMachine) Update(entries []Entry) []Entry {
 			entries[i].Result.Value = readUint64(mod, meta.ptrValue)
 			entries[i].Result.Data = append(entries[i].Result.Data[:0], getData(mod, meta)...)
 		}
-		if _, err := mod.ExportedFunction("__state_machine_finish").Call(ctx); err != nil {
+		if _, err := mod.ExportedFunction("__raft_finish").Call(ctx); err != nil {
 			panic(err)
 		}
 	}, true)
@@ -91,7 +92,8 @@ func (fsm *StateMachine) Query(ctx context.Context, data []byte) (res *Result) {
 		meta := get[*meta](fsm.ctx, ctxKeyMeta)
 		setShardID(mod, meta, fsm.shardID)
 		setReplicaID(mod, meta, fsm.replicaID)
-		read := mod.ExportedFunction("__state_machine_read")
+		setData(mod, meta, data)
+		read := mod.ExportedFunction("__raft_read")
 		stack, err := read.Call(ctx)
 		if err != nil {
 			slog.Error(`StateMachinePersistent.Query error`, "err", err.Error(), `len`, len(data))
@@ -109,38 +111,43 @@ func (fsm *StateMachine) Query(ctx context.Context, data []byte) (res *Result) {
 
 func (fsm *StateMachine) Watch(ctx context.Context, data []byte, out chan<- *Result) {
 	var closed bool
-	stop := make(chan bool)
+	var mu sync.Mutex
 	meta := get[*meta](fsm.ctx, ctxKeyMeta)
-	ctx = fsm.contextCopy(ctx)
+	ctx, cancel := context.WithCancel(fsm.contextCopy(ctx))
 	ctx = context.WithValue(ctx, ctxKeySend, func(res *Result) {
-		out <- res
+		mu.Lock()
+		defer mu.Unlock()
+		if closed {
+			return
+		}
+		select {
+		case out <- res:
+		case <-ctx.Done():
+			return
+		}
 	})
 	ctx = context.WithValue(ctx, ctxKeyClose, func() {
-		closed = true
-		close(stop)
+		mu.Lock()
+		defer mu.Unlock()
+		cancel()
 	})
 	fsm.pool.Run(func(mod api.Module) {
 		setShardID(mod, meta, fsm.shardID)
 		setReplicaID(mod, meta, fsm.replicaID)
 		setData(mod, meta, data)
-		if _, err := mod.ExportedFunction("__state_machine_stream_open").Call(ctx); err != nil {
+		if _, err := mod.ExportedFunction("__raft_watch_open").Call(ctx); err != nil {
 			panic(err)
 		}
 	})
-	select {
-	case <-ctx.Done():
-		if !closed {
-			close(stop)
-		}
-		break
-	case <-stop:
-		break
-	}
+	<-ctx.Done()
+	mu.Lock()
+	defer mu.Unlock()
+	closed = true
 	fsm.pool.Run(func(mod api.Module) {
 		setShardID(mod, meta, fsm.shardID)
 		setReplicaID(mod, meta, fsm.replicaID)
 		setData(mod, meta, data)
-		if _, err := mod.ExportedFunction("__state_machine_watch_closed").Call(ctx); err != nil {
+		if _, err := mod.ExportedFunction("__raft_watch_closed").Call(ctx); err != nil {
 			panic(err)
 		}
 	})
@@ -165,7 +172,7 @@ func (fsm *StateMachine) Stream(ctx context.Context, in <-chan []byte, out chan<
 	fsm.pool.Run(func(mod api.Module) {
 		setShardID(mod, meta, fsm.shardID)
 		setReplicaID(mod, meta, fsm.replicaID)
-		if _, err := mod.ExportedFunction("__state_machine_stream_open").Call(ctx); err != nil {
+		if _, err := mod.ExportedFunction("__raft_stream_open").Call(ctx); err != nil {
 			panic(err)
 		}
 	})
@@ -184,7 +191,7 @@ loop:
 				setShardID(mod, meta, fsm.shardID)
 				setReplicaID(mod, meta, fsm.replicaID)
 				setData(mod, meta, data)
-				if _, err := mod.ExportedFunction("__state_machine_stream_recv").Call(ctx); err != nil {
+				if _, err := mod.ExportedFunction("__raft_stream_recv").Call(ctx); err != nil {
 					panic(err)
 				}
 			})
@@ -193,7 +200,7 @@ loop:
 	fsm.pool.Run(func(mod api.Module) {
 		setShardID(mod, meta, fsm.shardID)
 		setReplicaID(mod, meta, fsm.replicaID)
-		if _, err := mod.ExportedFunction("__state_machine_stream_closed").Call(ctx); err != nil {
+		if _, err := mod.ExportedFunction("__raft_stream_closed").Call(ctx); err != nil {
 			panic(err)
 		}
 	})

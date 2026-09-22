@@ -17,8 +17,8 @@ var (
 	meta      = make([]uint32, 8)
 )
 
-//export __state_machine
-func __statemachine() uint32 {
+//export __raft
+func __raft() uint32 {
 	for i, p := range []unsafe.Pointer{
 		unsafe.Pointer(&flags),
 		unsafe.Pointer(&ShardID),
@@ -34,54 +34,57 @@ func __statemachine() uint32 {
 	return uint32(uintptr(unsafe.Pointer(&meta[0])))
 }
 
-//export __state_machine_open
+//export __raft_open
 func open() uint64 {
 	return fnOpen()
 }
 
-//export __state_machine_update
+//export __raft_update
 func update() {
 	value, tmp = fnUpdate(index, buf[:int(bufLen)])
 	copy(buf[:len(tmp)], tmp)
 	bufLen = uint32(len(tmp))
 }
 
-//export __state_machine_finish
+//export __raft_finish
 func finish() {
 	fnFinish()
 }
 
-//export __state_machine_read
-func read() uint64 {
+//export __raft_read
+func read() (res uint64) {
 	value, tmp = fnRead(buf[:int(bufLen)])
-	return (uint64(uintptr(unsafe.Pointer(&tmp[0]))) << 32) + uint64(len(tmp))
+	if len(tmp) > 0 {
+		res = (uint64(uintptr(unsafe.Pointer(&tmp[0]))) << 32) + uint64(len(tmp))
+	}
+	return
 }
 
-//export __state_machine_stream_open
+//export __raft_stream_open
 func stream_open() {
 	if fnStreamOpen != nil {
 		fnStreamOpen()
 	}
 }
 
-//export __state_machine_stream_recv
+//export __raft_stream_recv
 func stream_recv() {
 	fnStreamRecv(buf[:int(bufLen)])
 }
 
-//export __state_machine_stream_closed
+//export __raft_stream_closed
 func stream_closed() {
 	if fnStreamClosed != nil {
 		fnStreamClosed()
 	}
 }
 
-//export __state_machine_watch_open
+//export __raft_watch_open
 func watch_open() {
 	fnWatchOpen(buf[:int(bufLen)])
 }
 
-//export __state_machine_watch_closed
+//export __raft_watch_closed
 func watch_closed() {
 	if fnWatchClosed != nil {
 		fnWatchClosed()
@@ -97,23 +100,23 @@ func setValue(v uint64) {
 	value = v
 }
 
-//go:wasm-module pantopic/wazero-state-machine
-//export __state_machine_stream_send
+//go:wasm-module pantopic/ext-raft
+//export __raft_stream_send
 func streamSend()
 
-//go:wasm-module pantopic/wazero-state-machine
-//export __state_machine_stream_close
+//go:wasm-module pantopic/ext-raft
+//export __raft_stream_close
 func streamClose()
 
-//go:wasm-module pantopic/wazero-state-machine
-//export __state_machine_watch_send
+//go:wasm-module pantopic/ext-raft
+//export __raft_watch_send
 func watchSend()
 
-//go:wasm-module pantopic/wazero-state-machine
-//export __state_machine_watch_close
+//go:wasm-module pantopic/ext-raft
+//export __raft_watch_close
 func watchClose()
 
-var _ = __statemachine
+var _ = __raft
 var _ = open
 var _ = update
 var _ = finish

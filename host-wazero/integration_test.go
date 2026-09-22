@@ -17,17 +17,17 @@ import (
 	"github.com/pantopic/wazero-pool"
 )
 
-//go:embed test\.wasm
-var testWasm []byte
+//go:embed test-go-concurrent.wasm
+var testWasmGoConcurrent []byte
 
-//go:embed test\-persistent\.wasm
-var testWasmPersistent []byte
+//go:embed test-go-persistent.wasm
+var testWasmGoPersistent []byte
 
-//go:embed test\-zig\.wasm
-var testWasmZig []byte
+//go:embed test-zig-concurrent.wasm
+var testWasmZigConcurrent []byte
 
-//go:embed test\-persistent\-zig\.wasm
-var testWasmPersistentZig []byte
+//go:embed test-zig-persistent.wasm
+var testWasmZigPersistent []byte
 
 type StateMachineCommon interface {
 	Update(entries []Entry) []Entry
@@ -53,14 +53,16 @@ func TestHostModule(t *testing.T) {
 		wasm       []byte
 		persistent bool
 	}{
-		{`concurrent`, testWasm, false},
-		{`persistent`, testWasmPersistent, true},
-		{`concurrent-zig`, testWasmZig, false},
-		{`persistent-zig`, testWasmPersistentZig, true},
+		{`go-concurrent`, testWasmGoConcurrent, false},
+		{`go-persistent`, testWasmGoPersistent, true},
+		{`zig-concurrent`, testWasmZigConcurrent, false},
+		{`zig-persistent`, testWasmZigPersistent, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			pool, err := wazeropool.New(ctx, r, tc.wasm,
-				wazeropool.WithModuleConfig(cfg))
+				wazeropool.WithModuleConfig(cfg),
+				wazeropool.WithName(tc.name),
+				wazeropool.WithLimit(1))
 			if err != nil {
 				t.Fatalf(`%v`, err)
 			}
@@ -169,7 +171,6 @@ func test(t *testing.T, ctx context.Context, sm StateMachineCommon) {
 			wg.Go(func() {
 				for res := range out {
 					received++
-					println(`watch ` + string(res.Data))
 					if res.Value != 1 {
 						t.Errorf(`Value should be 1 but got %d`, res.Value)
 					}
@@ -192,7 +193,6 @@ func test(t *testing.T, ctx context.Context, sm StateMachineCommon) {
 			ctx, cancel := context.WithCancel(ctx)
 			var wg sync.WaitGroup
 			wg.Go(func() {
-				defer close(out)
 				res := <-out
 				received++
 				if res.Value != 1 {
@@ -205,6 +205,7 @@ func test(t *testing.T, ctx context.Context, sm StateMachineCommon) {
 			})
 			n := 2
 			sm.Watch(ctx, []byte(strconv.Itoa(n)), out)
+			close(out)
 			wg.Wait()
 			if received != 1 {
 				t.Fatalf(`Should have received 1 events but got %d`, received)

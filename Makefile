@@ -5,20 +5,22 @@ work:
 	go work use host-wazero
 
 wasm-go:
-	@cd test-go-concurrent && tinygo build -buildmode=wasi-legacy -target=wasi -opt=2 -gc=leaking -scheduler=none -o ../host/test-go-concurrent.wasm
-	@cd test-go-persistent && tinygo build -buildmode=wasi-legacy -target=wasi -opt=2 -gc=leaking -scheduler=none -o ../host/test-go-persistent.wasm
+	@cd test-go-concurrent && tinygo build -buildmode=wasi-legacy -target=wasi -opt=2 -gc=leaking -scheduler=none -o ../host-wazero/test-go-concurrent.wasm
+	@cd test-go-persistent && tinygo build -buildmode=wasi-legacy -target=wasi -opt=2 -gc=leaking -scheduler=none -o ../host-wazero/test-go-persistent.wasm
 
 wasm-zig:
-	@cd test-zig-concurrent && zig build-exe -target wasm32-wasi -O ReleaseSmall -fno-entry -rdynamic --dep raft -Mroot=module.zig -raft=../sdk-zig/raft.zig -femit-bin=../host/test-zig-concurrent.wasm
-	@cd test-zit-persistent && zig build-exe -target wasm32-wasi -O ReleaseSmall -fno-entry -rdynamic --dep raft -Mroot=module.zig -raft=../sdk-zig/raft.zig -femit-bin=../host/test-zig-persistent.wasm
+	@cd test-zig-concurrent && zig build
+	@cp test-zig-concurrent/zig-out/bin/test-zig-concurrent.wasm host-wazero/test-zig-concurrent.wasm
+	@cd test-zig-persistent && zig build
+	@cp test-zig-persistent/zig-out/bin/test-zig-persistent.wasm host-wazero/test-zig-persistent.wasm
 
 wasm: wasm-go wasm-zig
 
 test:
-	@cd host && go test . -v -cover
+	@cd host-wazero && go test . -v -cover
 
 bench:
-	@cd host && go test -bench=. -v -run=Benchmark.*
+	@cd host-wazero && go test -bench=. -v -run=Benchmark.*
 
 cover:
 	@mkdir -p _dist

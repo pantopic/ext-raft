@@ -1,0 +1,16 @@
+.{
+    .name = .test_zig_concurrent,
+    .version = "0.0.1",
+    .minimum_zig_version = "0.16.0",
+    .fingerprint = 0x95b13c3d445a03b4,
+    .dependencies = .{
+        .raft_sdk_zig = .{
+            .path = "../sdk-zig",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "module.zig",
+    },
+}

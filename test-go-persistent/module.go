@@ -55,39 +55,29 @@ func read(query []byte) (value uint64, data []byte) {
 }
 
 func streamOpen() {
-	println(`wasm stream open`)
 }
 
 func streamRecv(data []byte) {
-	println(`wasm stream recv ` + string(data))
 	if bytes.Equal(data, []byte(`close`)) {
-		println(`wasm stream close start`)
 		raft.StreamClose()
-		println(`wasm stream close complete`)
 	} else {
-		println(`wasm stream send start`)
 		raft.StreamSend(1, data)
-		println(`wasm stream send complete`)
 	}
 }
 
 func streamClosed() {
-	println(`wasm stream closed`)
 }
 
 func watchOpen(data []byte) {
-	println(`wasm watch open`)
 	n, err := strconv.Atoi(string(data))
 	if err != nil {
 		panic(err)
 	}
 	for i := range n {
-		println(`wasm watch send ` + strconv.Itoa(i+1))
 		raft.WatchSend(1, []byte(strconv.Itoa(i+1)))
 	}
 	raft.WatchClose()
 }
 
 func watchClosed() {
-	println(`wasm watch closed`)
 }

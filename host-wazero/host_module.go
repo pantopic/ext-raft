@@ -10,7 +10,7 @@ import (
 	"github.com/tetratelabs/wazero/api"
 )
 
-const Name = "pantopic/wazero-state-machine"
+const Name = "pantopic/ext-raft"
 
 var (
 	ctxKeyMeta  = Name + `/meta`
@@ -56,16 +56,16 @@ func (h *hostModule) Register(ctx context.Context, r wazero.Runtime) (err error)
 		builder = builder.NewFunctionBuilder().WithGoModuleFunction(api.GoModuleFunc(fn), nil, nil).Export(name)
 	}
 	for name, fn := range map[string]any{
-		"__state_machine_stream_send": func(ctx context.Context, res *Result) {
+		"__raft_stream_send": func(ctx context.Context, res *Result) {
 			get[func(*Result)](ctx, ctxKeySend)(res)
 		},
-		"__state_machine_stream_close": func(ctx context.Context) {
+		"__raft_stream_close": func(ctx context.Context) {
 			get[func()](ctx, ctxKeyClose)()
 		},
-		"__state_machine_watch_send": func(ctx context.Context, res *Result) {
+		"__raft_watch_send": func(ctx context.Context, res *Result) {
 			get[func(*Result)](ctx, ctxKeySend)(res)
 		},
-		"__state_machine_watch_close": func(ctx context.Context) {
+		"__raft_watch_close": func(ctx context.Context) {
 			get[func()](ctx, ctxKeyClose)()
 		},
 	} {
@@ -92,7 +92,7 @@ func (h *hostModule) Register(ctx context.Context, r wazero.Runtime) (err error)
 
 // InitContext retrieves the meta page from the wasm module
 func (h *hostModule) InitContext(ctx context.Context, m api.Module) (context.Context, error) {
-	stack, err := m.ExportedFunction(`__state_machine`).Call(ctx)
+	stack, err := m.ExportedFunction(`__raft`).Call(ctx)
 	if err != nil {
 		return ctx, err
 	}
