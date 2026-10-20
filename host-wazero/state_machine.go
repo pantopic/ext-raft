@@ -12,7 +12,7 @@ import (
 	"github.com/pantopic/wazero-pool"
 )
 
-const Uri = "pantopic/wazero-state-machine"
+const Uri = "pantopic/ext-raft"
 
 func Factory(
 	ctx context.Context,

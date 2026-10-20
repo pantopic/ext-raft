@@ -12,7 +12,7 @@ import (
 	"github.com/pantopic/wazero-pool"
 )
 
-const UriPersistent = "pantopic/wazero-state-machine/persistent"
+const UriPersistent = "pantopic/ext-raft/persistent"
 
 func FactoryPersistent(
 	ctx context.Context,

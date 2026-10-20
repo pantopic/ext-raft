@@ -66,10 +66,11 @@ export fn __raft_finish() void {
 export fn __raft_read() u64 {
     const res = fn_read.?(buf[0..buf_len]);
     value = res.value;
-    if (res.data.len > 0) {
-        return (@as(u64, @intFromPtr(res.data[0..res.data.len].ptr)) << 32) + @as(u64, res.data.len);
+    var ptr: u64 = res.data.len;
+    if (ptr > 0) {
+        ptr = ptr + (@as(u64, @intFromPtr(&res.data[0])) << 32);
     }
-    return 0;
+    return ptr;
 }
 
 export fn __raft_stream_open() void {
