@@ -22,19 +22,18 @@ func FactoryPersistent(
 	poolProvider PoolProvider,
 	extStorage ...StorageExtensionPersistent,
 ) func(shardID, replicaID uint64) zongzi.StateMachinePersistent {
-	ctxCopiers = append(ctxCopiers, wazeropool.ContextCopy)
 	return func(shardID, replicaID uint64) zongzi.StateMachinePersistent {
 		if ctxInit != nil {
 			ctx = ctxInit(ctx, shardID, replicaID)
 		}
-		pool := poolProvider(shardID)
+		pool, poolCtx := poolProvider(shardID)
 		ctx = wazeropool.ContextSet(ctx, pool)
 		for _, cc := range ctxCopiers {
-			ctx = cc(ctx, ctx)
+			ctx = cc(ctx, poolCtx)
 		}
 		return &StateMachinePersistent{
 			ctx:        ctx,
-			ctxCopy:    ctxCopiers,
+			ctxCopy:    append(ctxCopiers, wazeropool.ContextCopy),
 			extStorage: extStorage,
 			log:        logger,
 			pool:       pool,
@@ -79,9 +78,9 @@ func (fsm *StateMachinePersistent) contextCopy(ctx context.Context) context.Cont
 }
 
 func (fsm *StateMachinePersistent) Update(entries []Entry) []Entry {
+	meta := get[*meta](fsm.ctx, ctxKeyMeta)
 	ctx := fsm.contextCopy(context.Background())
 	fsm.pool.Run(func(mod api.Module) {
-		meta := get[*meta](fsm.ctx, ctxKeyMeta)
 		setShardID(mod, meta, fsm.shardID)
 		setReplicaID(mod, meta, fsm.replicaID)
 		update := mod.ExportedFunction("__raft_update")
@@ -100,9 +99,9 @@ func (fsm *StateMachinePersistent) Update(entries []Entry) []Entry {
 }
 
 func (fsm *StateMachinePersistent) Query(ctx context.Context, data []byte) (res *Result) {
+	meta := get[*meta](fsm.ctx, ctxKeyMeta)
 	ctx = fsm.contextCopy(ctx)
 	fsm.pool.Run(func(mod api.Module) {
-		meta := get[*meta](fsm.ctx, ctxKeyMeta)
 		setShardID(mod, meta, fsm.shardID)
 		setReplicaID(mod, meta, fsm.replicaID)
 		setData(mod, meta, data)
@@ -169,7 +168,6 @@ func (fsm *StateMachinePersistent) Watch(ctx context.Context, data []byte, out c
 func (fsm *StateMachinePersistent) Stream(ctx context.Context, in <-chan []byte, out chan<- *Result) {
 	var closed bool
 	stop := make(chan bool)
-	meta := get[*meta](fsm.ctx, ctxKeyMeta)
 	ctx = fsm.contextCopy(ctx)
 	ctx = context.WithValue(ctx, ctxKeySend, func(res *Result) {
 		select {
@@ -182,6 +180,7 @@ func (fsm *StateMachinePersistent) Stream(ctx context.Context, in <-chan []byte,
 		closed = true
 		close(stop)
 	})
+	meta := get[*meta](ctx, ctxKeyMeta)
 	fsm.pool.Run(func(mod api.Module) {
 		setShardID(mod, meta, fsm.shardID)
 		setReplicaID(mod, meta, fsm.replicaID)

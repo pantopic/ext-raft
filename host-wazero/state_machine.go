@@ -16,24 +16,23 @@ const Uri = "pantopic/ext-raft"
 
 func Factory(
 	ctx context.Context,
+	ctxInit ContextInit,
+	ctxCopiers []ContextCopy,
 	logger Logger,
 	poolProvider PoolProvider,
-	ctxInit ContextInit,
-	ctxCopiers ...ContextCopy,
 ) func(shardID, replicaID uint64) zongzi.StateMachine {
-	ctxCopiers = append(ctxCopiers, wazeropool.ContextCopy)
 	return func(shardID, replicaID uint64) zongzi.StateMachine {
 		if ctxInit != nil {
 			ctx = ctxInit(ctx, shardID, replicaID)
 		}
-		pool := poolProvider(shardID)
+		pool, poolCtx := poolProvider(shardID)
 		ctx = wazeropool.ContextSet(ctx, pool)
 		for _, cc := range ctxCopiers {
-			ctx = cc(ctx, ctx)
+			ctx = cc(ctx, poolCtx)
 		}
 		return &StateMachine{
 			ctx:       ctx,
-			ctxCopy:   ctxCopiers,
+			ctxCopy:   append(ctxCopiers, wazeropool.ContextCopy),
 			log:       logger,
 			pool:      pool,
 			replicaID: replicaID,
@@ -63,9 +62,9 @@ func (fsm *StateMachine) contextCopy(ctx context.Context) context.Context {
 }
 
 func (fsm *StateMachine) Update(entries []Entry) []Entry {
+	meta := get[*meta](fsm.ctx, ctxKeyMeta)
 	ctx := fsm.contextCopy(context.Background())
 	fsm.pool.Run(func(mod api.Module) {
-		meta := get[*meta](fsm.ctx, ctxKeyMeta)
 		setShardID(mod, meta, fsm.shardID)
 		setReplicaID(mod, meta, fsm.replicaID)
 		update := mod.ExportedFunction("__raft_update")
@@ -87,9 +86,9 @@ func (fsm *StateMachine) Update(entries []Entry) []Entry {
 
 func (fsm *StateMachine) Query(ctx context.Context, data []byte) (res *Result) {
 	res = zongzi.GetResult()
+	meta := get[*meta](fsm.ctx, ctxKeyMeta)
 	ctx = fsm.contextCopy(ctx)
 	fsm.pool.Run(func(mod api.Module) {
-		meta := get[*meta](fsm.ctx, ctxKeyMeta)
 		setShardID(mod, meta, fsm.shardID)
 		setReplicaID(mod, meta, fsm.replicaID)
 		setData(mod, meta, data)
@@ -99,7 +98,6 @@ func (fsm *StateMachine) Query(ctx context.Context, data []byte) (res *Result) {
 			slog.Error(`StateMachinePersistent.Query error`, "err", err.Error(), `len`, len(data))
 			return
 		}
-		res = zongzi.GetResult()
 		res.Value = readUint64(mod, meta.ptrValue)
 		buf, ok := mod.Memory().Read(uint32(stack[0]>>32), uint32(stack[0]))
 		if ok {

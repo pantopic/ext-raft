@@ -72,14 +72,14 @@ func TestHostModule(t *testing.T) {
 					t.Fatalf(`%v`, err)
 				}
 			})
-			poolProvider := func(shardID uint64) wazeropool.Instance {
-				return pool
+			poolProvider := func(shardID uint64) (wazeropool.Instance, context.Context) {
+				return pool, ctx
 			}
 			var sm StateMachineCommon
 			if tc.persistent {
 				sm = FactoryPersistent(ctx, nil, nil, zongzi.GetLogger(tc.name), poolProvider)(1, 1)
 			} else {
-				sm = Factory(ctx, zongzi.GetLogger(tc.name), poolProvider, nil)(1, 1)
+				sm = Factory(ctx, nil, nil, zongzi.GetLogger(tc.name), poolProvider)(1, 1)
 			}
 			test(t, ctx, sm)
 		})

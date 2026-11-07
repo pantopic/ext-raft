@@ -26,7 +26,7 @@ type (
 )
 
 type ContextCopy = func(dst, src context.Context) context.Context
-type PoolProvider func(shardID uint64) wazeropool.Instance
+type PoolProvider func(shardID uint64) (wazeropool.Instance, context.Context)
 type ContextInit func(ctx context.Context, shardID, replicaID uint64) context.Context
 
 type StorageExtension interface {
