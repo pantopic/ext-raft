@@ -86,7 +86,7 @@ func Watchable(
 ) {
 	fnWatchOpen = watchOpen
 	fnWatchClosed = watchClosed
-	flags = flags & flagWatchable
+	flags |= flagWatchable
 }
 
 func WatchSend(val uint64, data []byte) {

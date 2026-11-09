@@ -8,11 +8,6 @@ import (
 	"github.com/pantopic/wazero-pool"
 )
 
-const (
-	flagPersistent = iota
-	flagStreaming
-)
-
 type (
 	Entry  = zongzi.Entry
 	Logger = zongzi.Logger
