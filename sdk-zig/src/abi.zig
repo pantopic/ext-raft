@@ -18,9 +18,10 @@ pub const Result = struct {
 };
 
 pub const OpenFn = *const fn () u64;
-pub const UpdateFn = *const fn (index: u64, cmd: []u8) Result;
-pub const FinishFn = *const fn () void;
 pub const ReadFn = *const fn (query: []u8) Result;
+pub const UpdateFn = *const fn (index: u64, cmd: []u8) Result;
+pub const CommitFn = *const fn () void;
+pub const AbortFn = *const fn () void;
 pub const StreamOpenFn = *const fn () void;
 pub const StreamRecvFn = *const fn (cmd: []u8) void;
 pub const StreamClosedFn = *const fn () void;
@@ -28,9 +29,10 @@ pub const WatchOpenFn = *const fn (cmd: []u8) void;
 pub const WatchClosedFn = *const fn () void;
 
 pub var fn_open: ?OpenFn = null;
-pub var fn_update: ?UpdateFn = null;
-pub var fn_finish: ?FinishFn = null;
 pub var fn_read: ?ReadFn = null;
+pub var fn_update: ?UpdateFn = null;
+pub var fn_commit: ?CommitFn = null;
+pub var fn_abort: ?AbortFn = null;
 pub var fn_stream_open: ?StreamOpenFn = null;
 pub var fn_stream_recv: ?StreamRecvFn = null;
 pub var fn_stream_closed: ?StreamClosedFn = null;
@@ -59,8 +61,12 @@ export fn __raft_update() void {
     setData(res.data);
 }
 
-export fn __raft_finish() void {
-    fn_finish.?();
+export fn __raft_commit() void {
+    fn_commit.?();
+}
+
+export fn __raft_abort() void {
+    fn_abort.?();
 }
 
 export fn __raft_read() u64 {

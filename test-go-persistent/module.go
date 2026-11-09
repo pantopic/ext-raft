@@ -14,7 +14,7 @@ var (
 )
 
 func main() {
-	raft.Persistent(open, update, finish, read)
+	raft.Persistent(open, read, update, commit, abort)
 	raft.Streaming(streamOpen, streamRecv, streamClosed)
 	raft.Watchable(watchOpen, watchClosed)
 }
@@ -31,9 +31,11 @@ func update(index uint64, cmd []byte) (value uint64, data []byte) {
 	return
 }
 
-func finish() {
+func commit() {
 	sets++
 }
+
+func abort() {}
 
 var (
 	queryIndex = []byte(`index`)

@@ -15,17 +15,19 @@ pub fn replicaID() u64 {
     return abi.replica_id;
 }
 
-pub fn concurrent(update: abi.UpdateFn, finish: abi.FinishFn, read: abi.ReadFn) void {
-    abi.fn_update = update;
-    abi.fn_finish = finish;
+pub fn concurrent(read: abi.ReadFn, update: abi.UpdateFn, commit: abi.CommitFn, abort: abi.AbortFn) void {
     abi.fn_read = read;
+    abi.fn_update = update;
+    abi.fn_commit = commit;
+    abi.fn_abort = abort;
 }
 
-pub fn persistent(open: abi.OpenFn, update: abi.UpdateFn, finish: abi.FinishFn, read: abi.ReadFn) void {
+pub fn persistent(read: abi.ReadFn, open: abi.OpenFn, update: abi.UpdateFn, commit: abi.CommitFn, abort: abi.AbortFn) void {
     abi.fn_open = open;
-    abi.fn_update = update;
-    abi.fn_finish = finish;
     abi.fn_read = read;
+    abi.fn_update = update;
+    abi.fn_commit = commit;
+    abi.fn_abort = abort;
     abi.flags |= flag_persistent;
 }
 

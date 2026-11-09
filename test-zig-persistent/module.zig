@@ -12,7 +12,7 @@ var items: u64 = 0;
 var sets: u64 = 0;
 
 export fn _start() void {
-    raft.persistent(open, update, finish, read);
+    raft.persistent(open, read, update, commit, abort);
     raft.streaming(streamOpen, streamRecv, streamClosed);
     raft.watchable(watchOpen, watchClosed);
 }
@@ -33,9 +33,11 @@ fn update(index: u64, cmd: []u8) raft.Result {
     return .{ .value = value, .data = cmd };
 }
 
-fn finish() void {
+fn commit() void {
     sets += 1;
 }
+
+fn abort() void {}
 
 fn read(query: []u8) raft.Result {
     if (std.mem.eql(u8, query, "index")) {

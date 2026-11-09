@@ -46,9 +46,14 @@ func update() {
 	bufLen = uint32(len(tmp))
 }
 
-//export __raft_finish
-func finish() {
-	fnFinish()
+//export __raft_commit
+func commit() {
+	fnCommit()
+}
+
+//export __raft_abort
+func abort() {
+	fnAbort()
 }
 
 //export __raft_read
@@ -119,7 +124,7 @@ func watchClose()
 var _ = __raft
 var _ = open
 var _ = update
-var _ = finish
+var _ = commit
 var _ = read
 var _ = stream_open
 var _ = stream_recv

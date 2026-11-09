@@ -9,7 +9,8 @@ const (
 type (
 	funcOpen         func() uint64
 	funcUpdate       func(index uint64, cmd []byte) (value uint64, data []byte)
-	funcFinish       func()
+	funcCommit       func()
+	funcAbort        func()
 	funcRead         func(query []byte) (value uint64, data []byte)
 	funcStreamOpen   func()
 	funcStreamRecv   func(cmd []byte)
@@ -21,7 +22,8 @@ type (
 var (
 	fnOpen         funcOpen
 	fnUpdate       funcUpdate
-	fnFinish       funcFinish
+	fnCommit       funcCommit
+	fnAbort        funcAbort
 	fnRead         funcRead
 	fnStreamOpen   funcStreamOpen
 	fnStreamRecv   funcStreamRecv
@@ -31,25 +33,29 @@ var (
 )
 
 func Concurrent(
-	update funcUpdate,
-	finish funcFinish,
 	read funcRead,
+	update funcUpdate,
+	commit funcCommit,
+	abort funcAbort,
 ) {
-	fnUpdate = update
-	fnFinish = finish
 	fnRead = read
+	fnUpdate = update
+	fnCommit = commit
+	fnAbort = abort
 }
 
 func Persistent(
 	open funcOpen,
-	update funcUpdate,
-	finish funcFinish,
 	read funcRead,
+	update funcUpdate,
+	commit funcCommit,
+	abort funcAbort,
 ) {
 	fnOpen = open
-	fnUpdate = update
-	fnFinish = finish
 	fnRead = read
+	fnUpdate = update
+	fnCommit = commit
+	fnAbort = abort
 	flags |= flagPersistent
 }
 
