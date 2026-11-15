@@ -22,7 +22,7 @@ pub fn concurrent(read: abi.ReadFn, update: abi.UpdateFn, commit: abi.CommitFn, 
     abi.fn_abort = abort;
 }
 
-pub fn persistent(read: abi.ReadFn, open: abi.OpenFn, update: abi.UpdateFn, commit: abi.CommitFn, abort: abi.AbortFn) void {
+pub fn persistent(open: abi.OpenFn, read: abi.ReadFn, update: abi.UpdateFn, commit: abi.CommitFn, abort: abi.AbortFn) void {
     abi.fn_open = open;
     abi.fn_read = read;
     abi.fn_update = update;

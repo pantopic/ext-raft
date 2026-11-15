@@ -121,10 +121,12 @@ func watchSend()
 //export __raft_watch_close
 func watchClose()
 
+// fixes lint for unreferenced function
 var _ = __raft
 var _ = open
 var _ = update
 var _ = commit
+var _ = abort
 var _ = read
 var _ = stream_open
 var _ = stream_recv

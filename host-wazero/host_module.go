@@ -49,6 +49,45 @@ func (h *hostModule) Name() string {
 	return Name
 }
 
+// InitContext retrieves the meta page from the wasm module
+func (h *hostModule) InitContext(ctx context.Context, m api.Module) (context.Context, error) {
+	stack, err := m.ExportedFunction(`__raft`).Call(ctx)
+	if err != nil {
+		return ctx, err
+	}
+	meta := &meta{}
+	ptr := uint32(stack[0])
+	for i, v := range []*uint32{
+		&meta.ptrFlags,
+		&meta.ptrShardID,
+		&meta.ptrReplicaID,
+		&meta.ptrIndex,
+		&meta.ptrValue,
+		&meta.ptrBufCap,
+		&meta.ptrBufLen,
+		&meta.ptrBuf,
+	} {
+		*v = readUint32(m, ptr+uint32(4*i))
+	}
+	return context.WithValue(ctx, ctxKeyMeta, meta), nil
+}
+
+// ContextCopy populates dst context with the meta page from src context.
+func (h *hostModule) ContextCopy(dst, src context.Context) context.Context {
+	v := src.Value(ctxKeyMeta)
+	if v == nil {
+		return dst
+	}
+	dst = context.WithValue(dst, ctxKeyMeta, v.(*meta))
+	if v := src.Value(ctxKeySend); v != nil {
+		dst = context.WithValue(dst, ctxKeySend, v.(func(res *Result)))
+	}
+	if v := src.Value(ctxKeyClose); v != nil {
+		dst = context.WithValue(dst, ctxKeyClose, v.(func()))
+	}
+	return dst
+}
+
 // Register instantiates the host module, making it available to all module instances in this runtime
 func (h *hostModule) Register(ctx context.Context, r wazero.Runtime) (err error) {
 	builder := r.NewHostModuleBuilder(Name)
@@ -88,45 +127,6 @@ func (h *hostModule) Register(ctx context.Context, r wazero.Runtime) (err error)
 	}
 	h.module, err = builder.Instantiate(ctx)
 	return
-}
-
-// InitContext retrieves the meta page from the wasm module
-func (h *hostModule) InitContext(ctx context.Context, m api.Module) (context.Context, error) {
-	stack, err := m.ExportedFunction(`__raft`).Call(ctx)
-	if err != nil {
-		return ctx, err
-	}
-	meta := &meta{}
-	ptr := uint32(stack[0])
-	for i, v := range []*uint32{
-		&meta.ptrFlags,
-		&meta.ptrShardID,
-		&meta.ptrReplicaID,
-		&meta.ptrIndex,
-		&meta.ptrValue,
-		&meta.ptrBufCap,
-		&meta.ptrBufLen,
-		&meta.ptrBuf,
-	} {
-		*v = readUint32(m, ptr+uint32(4*i))
-	}
-	return context.WithValue(ctx, ctxKeyMeta, meta), nil
-}
-
-// ContextCopy populates dst context with the meta page from src context.
-func (h *hostModule) ContextCopy(dst, src context.Context) context.Context {
-	v := src.Value(ctxKeyMeta)
-	if v == nil {
-		return dst
-	}
-	dst = context.WithValue(dst, ctxKeyMeta, v.(*meta))
-	if v := src.Value(ctxKeySend); v != nil {
-		dst = context.WithValue(dst, ctxKeySend, v.(func(res *Result)))
-	}
-	if v := src.Value(ctxKeyClose); v != nil {
-		dst = context.WithValue(dst, ctxKeyClose, v.(func()))
-	}
-	return dst
 }
 
 func (h *hostModule) Stop() (err error) {

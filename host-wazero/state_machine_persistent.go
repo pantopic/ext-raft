@@ -88,12 +88,13 @@ func (fsm *StateMachinePersistent) Update(entries []Entry) []Entry {
 			setIndex(mod, meta, e.Index)
 			setData(mod, meta, e.Cmd)
 			if _, err := update.Call(ctx); err != nil {
+				mod.ExportedFunction("__raft_abort").Call(ctx)
 				panic(err)
 			}
 			entries[i].Result.Value = readUint64(mod, meta.ptrValue)
 			entries[i].Result.Data = append(entries[i].Result.Data[:0], getData(mod, meta)...)
 		}
-		mod.ExportedFunction("__raft_finish").Call(ctx)
+		mod.ExportedFunction("__raft_commit").Call(ctx)
 	}, true)
 	return entries
 }

@@ -2,14 +2,18 @@ package wazero_raft
 
 type Option func(*hostModule)
 
-func WithStorageExtension(ext StorageExtension) Option {
+func WithStorageExtension(ext ...StorageExtension) Option {
 	return func(h *hostModule) {
-		h.extStorage = append(h.extStorage, ext)
+		for _, e := range ext {
+			h.extStorage = append(h.extStorage, e)
+		}
 	}
 }
 
-func WithStorageExtensionPersistent(ext StorageExtensionPersistent) Option {
+func WithStorageExtensionPersistent(ext ...StorageExtensionPersistent) Option {
 	return func(h *hostModule) {
-		h.extStoragePersistent = append(h.extStoragePersistent, ext)
+		for _, e := range ext {
+			h.extStoragePersistent = append(h.extStoragePersistent, e)
+		}
 	}
 }
