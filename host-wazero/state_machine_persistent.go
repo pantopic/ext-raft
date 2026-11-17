@@ -16,20 +16,19 @@ const UriPersistent = "pantopic/ext-raft/persistent"
 
 func FactoryPersistent(
 	ctx context.Context,
-	ctxInit ContextInit,
 	ctxCopiers []ContextCopy,
 	logger Logger,
 	poolProvider PoolProvider,
 	extStorage ...StorageExtensionPersistent,
 ) func(shardID, replicaID uint64) zongzi.StateMachinePersistent {
 	return func(shardID, replicaID uint64) zongzi.StateMachinePersistent {
-		if ctxInit != nil {
-			ctx = ctxInit(ctx, shardID, replicaID)
-		}
 		pool, poolCtx := poolProvider(shardID)
 		ctx = wazeropool.ContextSet(ctx, pool)
 		for _, cc := range ctxCopiers {
 			ctx = cc(ctx, poolCtx)
+		}
+		for _, ext := range extStorage {
+			ctx = ext.Init(ctx, shardID, replicaID)
 		}
 		return &StateMachinePersistent{
 			ctx:        ctx,

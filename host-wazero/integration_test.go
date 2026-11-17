@@ -77,9 +77,9 @@ func TestHostModule(t *testing.T) {
 			}
 			var sm StateMachineCommon
 			if tc.persistent {
-				sm = FactoryPersistent(ctx, nil, nil, zongzi.GetLogger(tc.name), poolProvider)(1, 1)
+				sm = FactoryPersistent(ctx, nil, zongzi.GetLogger(tc.name), poolProvider)(1, 1)
 			} else {
-				sm = Factory(ctx, nil, nil, zongzi.GetLogger(tc.name), poolProvider)(1, 1)
+				sm = Factory(ctx, nil, zongzi.GetLogger(tc.name), poolProvider)(1, 1)
 			}
 			test(t, ctx, sm)
 		})

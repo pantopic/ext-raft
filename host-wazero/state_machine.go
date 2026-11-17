@@ -16,15 +16,11 @@ const Uri = "pantopic/ext-raft"
 
 func Factory(
 	ctx context.Context,
-	ctxInit ContextInit,
 	ctxCopiers []ContextCopy,
 	logger Logger,
 	poolProvider PoolProvider,
 ) func(shardID, replicaID uint64) zongzi.StateMachine {
 	return func(shardID, replicaID uint64) zongzi.StateMachine {
-		if ctxInit != nil {
-			ctx = ctxInit(ctx, shardID, replicaID)
-		}
 		pool, poolCtx := poolProvider(shardID)
 		ctx = wazeropool.ContextSet(ctx, pool)
 		for _, cc := range ctxCopiers {

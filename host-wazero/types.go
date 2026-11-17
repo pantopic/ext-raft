@@ -32,6 +32,7 @@ type StorageExtension interface {
 }
 
 type StorageExtensionPersistent interface {
+	Init(ctx context.Context, shardID, replicaID uint64) context.Context
 	PrepareSnapshot(ctx context.Context) (cursor any, err error)
 	SaveSnapshot(ctx context.Context, cursor any, w io.Writer, close <-chan struct{}) (err error)
 	RecoverFromSnapshot(ctx context.Context, r io.Reader, _ <-chan struct{}) (err error)

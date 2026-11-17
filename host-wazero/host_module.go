@@ -32,7 +32,6 @@ type meta struct {
 type hostModule struct {
 	sync.RWMutex
 
-	module               api.Module
 	extStorage           []StorageExtension
 	extStoragePersistent []StorageExtensionPersistent
 }
@@ -51,7 +50,11 @@ func (h *hostModule) Name() string {
 
 // InitContext retrieves the meta page from the wasm module
 func (h *hostModule) InitContext(ctx context.Context, m api.Module) (context.Context, error) {
-	stack, err := m.ExportedFunction(`__raft`).Call(ctx)
+	fn := m.ExportedFunction(`__raft`)
+	if fn == nil {
+		return ctx, nil
+	}
+	stack, err := fn.Call(ctx)
 	if err != nil {
 		return ctx, err
 	}
@@ -125,7 +128,7 @@ func (h *hostModule) Register(ctx context.Context, r wazero.Runtime) (err error)
 			log.Panicf("Method signature implementation missing: %#v", fn)
 		}
 	}
-	h.module, err = builder.Instantiate(ctx)
+	_, err = builder.Instantiate(ctx)
 	return
 }
 
